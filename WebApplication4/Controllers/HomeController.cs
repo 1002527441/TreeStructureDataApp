@@ -1,5 +1,8 @@
-﻿using Microsoft.AspNetCore.Mvc;
+
+using AutoMapper;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -17,81 +20,152 @@ namespace WebApplication4.Controllers
     public class HomeController:Controller
     {
         private readonly IDbContextFactory<DefaultDbContext> _dbContextFactory;
+        private readonly IMapper _mapper;
 
-        public HomeController(IDbContextFactory<DefaultDbContext> dbContextFactory)
+        public HomeController(IDbContextFactory<DefaultDbContext> dbContextFactory,IMapper mapper)
         {
             _dbContextFactory = dbContextFactory;
+
+            _mapper = mapper;
         }
 
 
         [HttpGet]
         public IActionResult Get()
         {
-
-        
-
             return Ok("Hello world");
         }
 
 
-        [HttpGet("GetChild")]
-        public IActionResult GetChild(string Id)
+        [HttpGet("GetChild2")]
+        public async Task<IActionResult> GetChild2(string Id)
         {
 
-            var context = _dbContextFactory.CreateDbContext();
-            var employees = context.Employees.FirstOrDefault(x => x.Id == Id);
 
-            if (employees == null) { return NotFound(); }
+            var context = await _dbContextFactory.CreateDbContextAsync();
 
-            FindChild(employees);
+            var employee = context.Employees.Flatten1(x=>x.Children).FirstOrDefault(x=>x.Id == Id);    
 
-            return Ok(employees);
+
+            var employessDTO = _mapper.Map<EmployeeDTO>(employee);
+
+
+            return Ok(employessDTO);
         }
+
+        [HttpGet("GetChild3")]
+        public async Task<IActionResult> GetChild3(string Id)
+        {
+
+
+            var context = await _dbContextFactory.CreateDbContextAsync();
+
+            var employee = context.Employees.Flatten3(x => x.Children).FirstOrDefault(x => x.Id == Id);
+
+
+            var employessDTO = _mapper.Map<EmployeeDTO>(employee);
+
+
+            return Ok(employessDTO);
+        }
+
+        [HttpGet("GetChild4")]
+        public async Task<IActionResult> GetChild4(string Id)
+        {
+
+
+            var context = await _dbContextFactory.CreateDbContextAsync();
+
+            var employee =await context.GetChilds(Id);
+
+            var employessDTO = _mapper.Map<EmployeeDTO>(employee.FirstOrDefault());
+
+
+            return Ok(employessDTO);
+        }
+
+
+        [HttpGet("GetChild0")]
+        public async Task<IActionResult> GetChild0(string Id)
+        {
+            // solution 1
+            var context = await _dbContextFactory.CreateDbContextAsync();
+
+            var employee = context.Employees.FirstOrDefault(employees => employees.Id == Id);
+
+            await  FindChildAsync(employee);
+
+            var employessDTO = _mapper.Map<EmployeeDTO>(employee);
+
+
+            return Ok(employessDTO);
+        }
+
+
+
+        [HttpGet("GetChild1")]
+        public async Task<IActionResult> GetChild1(string Id)
+        {
+            // solution 1
+            var context     = await _dbContextFactory.CreateDbContextAsync();
+
+            var employees   = context.Employees.ToList();
+
+            var employee    = employees.Flatten(x => x.Children).FirstOrDefault(employees => employees.Id == Id);
+
+            var employessDTO = _mapper.Map<EmployeeDTO>(employee);
+
+
+            return Ok(employessDTO);
+        }
+
 
 
 
 
         [HttpGet("GetParent")]
-        public IActionResult GetParent(string Id)
+        public async Task<IActionResult> GetParent(string Id)
         {
 
-            var context = _dbContextFactory.CreateDbContext();
-            var employees = context.Employees.FirstOrDefault(x => x.Id == Id);
+            var context     = await _dbContextFactory.CreateDbContextAsync();
+            var employees   = context.Employees.FirstOrDefault(x => x.Id == Id);
 
             if (employees == null) { return NotFound(); }
 
-            FindParent(employees);
+            await FindParentAsync(employees);
 
-            return Ok(employees);
+            var employessDTO = _mapper.Map<EmployeeParentDTO>(employees);
+
+            return Ok(employessDTO);
         }
 
 
 
-        private  void FindChild(Employee employe)
+        private async Task FindChildAsync(Employee employe)
         {
-            var context = _dbContextFactory.CreateDbContext();
-            var childs = context.Employees.Where(x => x.ParentId == employe.Id);
+            var context = await _dbContextFactory.CreateDbContextAsync();
+            var childs  = await context.Employees.Where(x => x.ParentId == employe.Id).ToListAsync();
 
             if (childs == null)  return;
 
             foreach (var child in childs)
             {
-                employe.Childrens.Add(child);
-                FindChild(child);
+                employe.Children.Add(child);
+                await FindChildAsync(child);
             }
 
             return ;
         }
 
-        private void FindParent(Employee employe)
+        private async Task FindParentAsync(Employee employe)
         {
             if (string.IsNullOrEmpty(employe.ParentId)) return;
 
-            var context = _dbContextFactory.CreateDbContext();
-            var parent = context.Employees.FirstOrDefault(x => x.Id == employe.ParentId);
+            var context = await _dbContextFactory.CreateDbContextAsync();
+            var parent  = await context.Employees.FirstOrDefaultAsync(x => x.Id == employe.ParentId);
 
             employe.Parent = parent;
-            if (parent != null) FindParent(parent);
+            if (parent != null) await FindParentAsync(parent);
 
             return;
         }
@@ -99,15 +173,15 @@ namespace WebApplication4.Controllers
 
 
         [HttpPost]
-        public IActionResult Post(string Id, string Name)
+        public async Task<IActionResult> Post(string Id, string Name)
         {
-            var context = _dbContextFactory.CreateDbContext();
+            var context = await _dbContextFactory.CreateDbContextAsync();
 
             var employee = new Employee(Id, Name);
 
-            context.Employees.Add(employee);
+            await context.Employees.AddAsync(employee);
 
-            context.SaveChanges();
+            await context.SaveChangesAsync();
 
             return Ok("add employee Success");
 
